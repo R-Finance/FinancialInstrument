@@ -18,7 +18,7 @@
 ## we should probably assign instruments into a special namespace and create get* functions.  Jeff?
 
 is.instrument <- function( x ) {
-  x <- get(x,pos=.instrument,inherits=TRUE)
+  x <- get(x,envir=.instrument,inherits=TRUE)
   inherits( x, "instrument" )
 }
 
@@ -36,38 +36,39 @@ instrument<-function(primary_id , currency , multiplier , identifiers = NULL, ..
   if(is.null(type)) tclass="instrument" else tclass = c(type,"instrument")
 
   ## now structure and return
-  assign(primary_id, structure( list(primary_id = primary_id,
+  return(structure( list(primary_id = primary_id,
                          type = type,
                          currency = currency,
                          multiplier = multiplier,
                          identifiers = identifiers
                         ),
                     class = tclass
-                  ), # end structure
-        pos=.instrument,inherits=TRUE
-        )
+                  ) # end structure
+          )
 }
 
 stock <- function(primary_id , currency , multiplier, identifiers = NULL, ...){
   stock_temp = instrument(primary_id , currency , multiplier , identifiers = identifiers, ..., type="stock" )
   ## now structure and return
-  assign(primary_id, structure( list(primary_id = primary_id,
-                         currency = currency,
-                         multiplier = multiplier,
-                         identifiers = identifiers
+  assign(primary_id, structure( list(primary_id = stock_tmp$primary_id,
+                         currency = stock_tmp$currency,
+                         multiplier = stock_tmp$multiplier,
+                         identifiers = stock_tmp$identifiers
                         ),
                     class=c("stock","instrument")
                   ), # end structure
-         pos=.instrument,inherits=TRUE
+         envir=.instrument,inherits=TRUE
   )
 }
 
-future <- function(primary_id , currency , multiplier , identifiers = NULL, ..., underlying_id){
+future <- function(primary_id , currency , multiplier , identifiers = NULL, ..., underlying_id=NULL){
   future_temp = instrument(primary_id , currency , multiplier , identifiers = identifiers, ... , type="future" )
 
-  if(is.null(underlying_id)) warning("underlying_id should only be NULL for cash-settled futures")
-
-  if(!exists(underlying_id, pos=.instrument,inherits=TRUE)) warning("underlying_id not found") # assumes that we know where to look
+  if(is.null(underlying_id)) {
+      warning("underlying_id should only be NULL for cash-settled futures")
+  } else {
+      if(!exists(underlying_id, where=.instrument,inherits=TRUE)) warning("underlying_id not found") # assumes that we know where to look
+  }
   ## now structure and return
   assign(primary_id, structure( list(primary_id = future_temp$primary_id,
                          currency = future_temp$currency,
@@ -77,11 +78,11 @@ future <- function(primary_id , currency , multiplier , identifiers = NULL, ...,
                         ),
                     class=c("future","instrument")
                   ), # end structure
-         pos=.instrument,inherits=TRUE
+         envir=.instrument,inherits=TRUE
   )
 }
 
-future_series <- function(primary_id , suffix_id, first_traded, expires, identifiers = NULL, ...){
+future_series <- function(primary_id , suffix_id, first_traded=NULL, expires=NULL, identifiers = NULL, ...){
   contract<-try(getInstrument(primary_id))
   if(!inherits(contract,"future")) stop("futures contract spec must be defined first")
 
@@ -90,7 +91,7 @@ future_series <- function(primary_id , suffix_id, first_traded, expires, identif
   ## with futures series we probably need to be more sophisticated,
   ## and find the existing series from prior periods (probably years)
   ## and then add the first_traded and expires to the time series
-  temp_series<-try(getInstrument(paste(primary_id, suffix_id)))
+  temp_series<-try(getInstrument(paste(primary_id, suffix_id,sep="_")))
   if(inherits(temp_series,"future_series")) {
     temp_series$first_traded<-c(temp_series$first_traded,first_traded)
     temp_series$expires<-c(temp_series$expires,expires)
@@ -105,15 +106,17 @@ future_series <- function(primary_id , suffix_id, first_traded, expires, identif
              ) # end structure
   }
 
-  assign(paste(primary_id, suffix_id, sep=""), temp_series, pos=.instrument,inherits=TRUE)
+  assign(paste(primary_id, suffix_id, sep="_"), temp_series, envir=.instrument,inherits=TRUE)
 }
 
-option <- function(primary_id , currency , multiplier , identifiers = NULL, ..., underlying_id){
+option <- function(primary_id , currency , multiplier , identifiers = NULL, ..., underlying_id=NULL){
   option_temp = instrument(primary_id , currency , multiplier, identifiers = identifiers, ..., type="option")
 
-  if(is.null(underlying_id)) warning("underlying_id should only be NULL for cash-settled options")
-
-  if(!exists(underlying_id, pos=.instrument,inherits=TRUE)) warning("underlying_id not found") # assumes that we know where to look
+  if(is.null(underlying_id)) {
+      warning("underlying_id should only be NULL for cash-settled options")
+  } else {
+      if(!exists(underlying_id, where=.instrument,inherits=TRUE)) warning("underlying_id not found") # assumes that we know where to look
+  }
   ## now structure and return
   assign(primary_id, structure( list(primary_id = option_temp$primary_id,
                          currency = option_temp$currency,
@@ -123,17 +126,18 @@ option <- function(primary_id , currency , multiplier , identifiers = NULL, ...,
                         ),
                     class=c("option","instrument")
                   ), # end structure
-         pos=.instrument,inherits=TRUE
+         envir=.instrument,inherits=TRUE
   )
 }
 
-option_series <- function(primary_id , suffix_id, first_traded, expires, identifiers = NULL, ...){
+option_series <- function(primary_id , suffix_id, first_traded=NULL, expires=NULL, callput=c("call","put"), identifiers = NULL, ...){
   contract<-try(getInstrument(primary_id))
   if(!inherits(contract,"option")) stop("options contract spec must be defined first")
   ## with options series we probably need to be more sophisticated,
   ## and find the existing series from prior periods (probably years)
   ## and then add the first_traded and expires to the time series
-  temp_series<-try(getInstrument(paste(primary_id, suffix_id)))
+  if(length(callput)==2) stop("value of callput must be specified as 'call' or 'put'")
+  temp_series<-try(getInstrument(paste(primary_id, suffix_id,sep="_")))
   if(inherits(temp_series,"option_series")) {
     temp_series$first_traded<-c(temp_series$first_traded,first_traded)
     temp_series$expires<-c(temp_series$expires,expires)
@@ -142,13 +146,14 @@ option_series <- function(primary_id , suffix_id, first_traded, expires, identif
                          suffix_id = suffix_id,
                          first_traded = first_traded,
                          expires = expires,
+                         callput = callput,
                          identifiers = identifiers
                         ),
                     class=c("option_series", "option", "instrument")
              ) # end structure
   }
 
-  assign(paste(primary_id, suffix_id,sep=""), temp_series, pos=.instrument,inherits=TRUE)
+  assign(paste(primary_id, suffix_id,sep="_"), temp_series, envir=.instrument,inherits=TRUE)
 }
 
 currency <- function(primary_id , currency=NULL , multiplier=1 , identifiers = NULL, ...){
@@ -161,33 +166,51 @@ currency <- function(primary_id , currency=NULL , multiplier=1 , identifiers = N
                         ),
                     class=c("currency","instrument")
                   ), # end structure
-         pos=.instrument,inherits=TRUE
+         envir=.instrument,inherits=TRUE
   )
 }
 
 is.currency <- function( x ) {
-  x <- get(x,pos=.instrument,inherits=TRUE)
+  x <- get(x,envir=.instrument,inherits=TRUE)
   inherits( x, "currency" )
 }
 
 exchange_rate <- function (primary_id , currency , second_currency, identifiers = NULL, ...){
   exchange_rate_temp = instrument(primary_id , currency , multiplier=1 , identifiers = identifiers, ..., type="exchange_rate")
 
-  if(!exists(currency, pos=.instrument,inherits=TRUE)) warning("currency not found") # assumes that we know where to look
-  if(!exists(second_currency, pos=.instrument,inherits=TRUE)) warning("second_currency not found") # assumes that we know where to look
+  if(!exists(currency, where=.instrument,inherits=TRUE)) warning("currency not found") # assumes that we know where to look
+  if(!exists(second_currency, where=.instrument,inherits=TRUE)) warning("second_currency not found") # assumes that we know where to look
 
   ## now structure and return
-  assign(primary_id, structure( list(primary_id = primary_id,
-                         currency = currency,
-                         second_currency = second_currency,
-                         identifiers = identifiers
+  assign(primary_id, structure( list(primary_id = exchange_rate_temp$primary_id,
+                         currency = exchange_rate_temp$currency,
+                         second_currency = exchange_rate_temp$second_currency,
+                         identifiers = exchange_rate_temp$identifiers
                         ),
                     class=c("exchange_rate","instrument")
                   ), # end structure
-         pos=.instrument,inherits=TRUE
+         envir=.instrument,inherits=TRUE
   )
 }
 
+#@TODO: government bond
+#@TODO  auction dates, coupons, etc for govmt. bonds
+bond <- function(primary_id , currency , multiplier, identifiers = NULL, ...){
+    bond_temp = instrument(primary_id , currency , multiplier , identifiers = identifiers, ..., type="bond" )
+    ## now structure and return
+    assign(primary_id, structure( list(primary_id = bond_temp$primary_id,
+                            currency = bond_temp$currency,
+                            multiplier = bond_temp$multiplier,
+                            identifiers = bond_temp$identifiers
+                    ),
+                    class=c("bond","instrument")
+            ), # end structure
+            envir=.instrument,inherits=TRUE
+    )
+}
+
+
+
 getInstrument <- function(x){
-  get(x,pos=.instrument,inherits=TRUE)
+  get(x,envir=.instrument,inherits=TRUE)
 }
